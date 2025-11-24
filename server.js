@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI } from '@google/genai'; // <--- TADY JE ZMĚNA (smazal jsem SchemaType)
+import { GoogleGenAI } from '@google/genai';
 import cors from 'cors';
 
 const app = express();
@@ -41,12 +41,13 @@ app.post('/api/tah', async (req, res) => {
 
     try {
         const response = await ai.models.generateContent({
-            model:'gemini-2.0-flash-exp',
+            // ZMĚNA: Používáme stabilní verzi, která je zdarma
+            model: 'gemini-1.5-flash', 
             contents: history,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: "OBJECT", // Používáme text místo SchemaType.OBJECT
+                    type: "OBJECT",
                     properties: {
                         popis: { type: "STRING" },
                         herni_data: { 
@@ -76,7 +77,7 @@ app.post('/api/tah', async (req, res) => {
             json_odpoved = { 
                 popis: ai_text, 
                 herni_data: {}, 
-                možnosti: ["Zkusit to znovu"] 
+                možnosti: ["Pokračovat"] 
             };
         }
 
@@ -84,8 +85,9 @@ app.post('/api/tah', async (req, res) => {
         res.json(json_odpoved);
 
     } catch (error) {
-        console.error("Chyba:", error);
-        res.status(500).json({ error: "Interní chyba serveru: " + error.message });
+        // Pokud dojde k chybě (např. 429), vypíšeme ji do konzole Renderu
+        console.error("CHYBA API:", error);
+        res.status(500).json({ error: "Chyba komunikace s AI (zkus to za chvíli znovu)." });
     }
 });
 
