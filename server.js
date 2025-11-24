@@ -1,12 +1,11 @@
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, SchemaType } from '@google/genai'; // Přidali jsme SchemaType
 import cors from 'cors';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Inicializace Gemini s klíčem z prostředí
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.use(express.json());
@@ -21,7 +20,7 @@ PRAVIDLA:
 1. Vždy odpovídej výhradně v češtině.
 2. Vždy popiš scénu stručně, ale atmosféricky.
 3. Nikdy nepřebírej kontrolu nad hráčovou postavou.
-4. VÝSTUP MUSÍ BÝT VŽDY VALIDNÍ JSON objekt.
+4. Generuj validní JSON.
 `;
 
 app.post('/api/tah', async (req, res) => {
@@ -41,29 +40,45 @@ app.post('/api/tah', async (req, res) => {
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-1.5-flash', // Ujistíme se, že používáme stabilní model
             contents: history,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: "object",
+                    type: "OBJECT",
                     properties: {
-                        popis: { type: "string" },
-                        herni_data: { type: "object" },
-                        možnosti: { type: "array", items: { type: "string" } }
+                        popis: { type: "STRING" },
+                        herni_data: { 
+                            type: "OBJECT",
+                            // TADY BYLA CHYBA - Musíme definovat vnitřek objektu:
+                            properties: {
+                                zmena_zdravi: { type: "INTEGER" },
+                                nova_polozka: { type: "STRING" },
+                                info: { type: "STRING" }
+                            }
+                        },
+                        možnosti: { 
+                            type: "ARRAY", 
+                            items: { type: "STRING" } 
+                        }
                     }
                 }
             }
         });
 
-        const ai_text = response.text.trim();
+        const ai_text = response.text().trim(); // Oprava: response.text() je funkce
         let json_odpoved;
 
         try {
             json_odpoved = JSON.parse(ai_text);
         } catch (e) {
             console.error("Gemini vrátil nevalidní JSON:", ai_text);
-            return res.status(500).json({ error: "Chyba ve zpracování AI odpovědi." });
+            // Pokud selže JSON, vrátíme alespoň text v náhradním objektu
+            json_odpoved = { 
+                popis: ai_text, 
+                herni_data: {}, 
+                možnosti: ["Zkusit to znovu"] 
+            };
         }
 
         history.push({ role: "model", parts: [{ text: ai_text }] });
@@ -71,11 +86,10 @@ app.post('/api/tah', async (req, res) => {
 
     } catch (error) {
         console.error("Chyba:", error);
-        res.status(500).json({ error: "Interní chyba serveru." });
+        res.status(500).json({ error: "Interní chyba serveru: " + error.message });
     }
 });
 
-// !!! TOTO JE TA ČÁST, KTERÁ TI PRAVDĚPODOBNĚ CHYBĚLA !!!
 app.listen(port, () => {
     console.log(`Backend server běží na portu ${port}`);
 });
