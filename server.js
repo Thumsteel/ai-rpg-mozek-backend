@@ -6,69 +6,45 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 1. Tady si kód "sáhne" do Renderu pro ten nový klíč
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// !!! SEM VLOŽ TEN KLÍČ Z NOVÉHO GMAILU (Do uvozovek) !!!
+// Příklad: const API_KEY = "AIzaSyD-.......";
+const API_KEY = "AIzaSyC3x7t9yKJlHvGBOfSVqVQHQR9cUGTfAq8"; 
 
-// 2. Použijeme stabilní model (s novým účtem už pojede)
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
-    generationConfig: {
-        responseMimeType: "application/json" 
-    }
-});
+console.log("Používám klíč (první 4 znaky):", API_KEY.substring(0, 4));
+
+const genAI = new GoogleGenerativeAI(API_KEY);
+
+// Zkusíme starší model 'gemini-pro', ten je nejméně problémový
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
 app.use(express.json());
 app.use(cors());
 
 let chatHistory = [];
 
-const SYSTEM_INSTRUCTIONS = `
-Jsi Pán jeskyně pro temnou fantasy textovou RPG hru.
-Hrajeme hru. Odpovídej česky.
-Na konci každé odpovědi dej JSON v tomto formátu (nic jiného):
-{
-  "popis": "Tvůj popis situace",
-  "herni_data": { "zmena_zdravi": 0, "nova_polozka": "" },
-  "možnosti": ["Možnost A", "Možnost B"]
-}
-`;
-
 app.post('/api/tah', async (req, res) => {
-    const { akce_hrace, stav_hrace } = req.body;
+    const { akce_hrace } = req.body;
     console.log(`Hráč: ${akce_hrace}`);
 
     try {
-        if (chatHistory.length === 0) {
-            chatHistory = [
-                { role: "user", parts: [{ text: SYSTEM_INSTRUCTIONS }] },
-                { role: "model", parts: [{ text: "Rozumím." }] }
-            ];
-        }
-
-        const userMessage = `Stav: ${JSON.stringify(stav_hrace)}. Akce: "${akce_hrace}".`;
-        
-        const chat = model.startChat({ history: chatHistory });
-        const result = await chat.sendMessage(userMessage);
+        // Jednoduchý test bez historie, jen jestli to projde
+        const result = await model.generateContent(`Hraješ RPG. Hráč udělal: ${akce_hrace}. Odpověz krátce a na konci dej JSON: { "popis": "text", "herni_data": {}, "možnosti": [] }`);
         const text = result.response.text();
+        
+        console.log("✅ AI ODPOVĚDĚLA:", text);
 
-        // Parsování JSONu
-        let json_odpoved;
+        // Ošklivý hack na parsování JSONu, jen pro test
+        let json_odpoved = { popis: text, herni_data: {}, možnosti: ["Funguje to!"] };
         try {
-            const start = text.indexOf('{');
-            const end = text.lastIndexOf('}');
-            if (start !== -1 && end !== -1) {
-                json_odpoved = JSON.parse(text.substring(start, end + 1));
-            } else {
-                json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
-            }
-        } catch (e) {
-            json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
-        }
+            const s = text.indexOf('{');
+            const e = text.lastIndexOf('}');
+            if (s !== -1) json_odpoved = JSON.parse(text.substring(s, e + 1));
+        } catch(e) {}
 
         res.json(json_odpoved);
 
     } catch (error) {
-        console.error("CHYBA:", error);
+        console.error("❌ CHYBA:", error);
         res.status(500).json({ error: error.message });
     }
 });
