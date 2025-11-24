@@ -6,75 +6,68 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// !!! ZDE VLOŽ SVŮJ KLÍČ DO UVOZOVEK !!!
-// Pokud to s ním nepůjde, je klíč/projekt rozbitý.
-const API_KEY = "AIzaSyDQxG-dHvWZTJBpf9lRvw2paZ-9oZJG-Z8"; 
+// !!! SEM VLOŽ TEN KLÍČ Z NOVÉHO GMAILU !!!
+const API_KEY = "AIzaSyC3x7t9yKJlHvGBOfSVqVQHQR9cUGTfAq8"; 
 
 const genAI = new GoogleGenerativeAI(API_KEY);
+
+// Použijeme nejrychlejší model. S novým účtem musí fungovat.
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 app.use(express.json());
 app.use(cors());
 
-// Seznam modelů, které zkusíme jeden po druhém
-const MODELS_TO_TRY = [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-001",
-    "gemini-pro",
-    "gemini-1.0-pro"
-];
-
 let chatHistory = [];
+
+const SYSTEM_INSTRUCTIONS = `
+Jsi Pán jeskyně pro temnou fantasy textovou RPG hru.
+Hrajeme hru. Odpovídej česky.
+Na konci každé odpovědi dej JSON v tomto formátu (nic jiného):
+{
+  "popis": "Tvůj popis situace",
+  "herni_data": { "zmena_zdravi": 0, "nova_polozka": "" },
+  "možnosti": ["Možnost A", "Možnost B"]
+}
+`;
 
 app.post('/api/tah', async (req, res) => {
     const { akce_hrace, stav_hrace } = req.body;
     console.log(`Hráč: ${akce_hrace}`);
 
-    let responseText = null;
-    let usedModel = "";
-
-    // ZKUSÍME VŠECHNY MODELY V SMYČCE
-    for (const modelName of MODELS_TO_TRY) {
-        try {
-            console.log(`🔄 Zkouším model: ${modelName}...`);
-            const model = genAI.getGenerativeModel({ model: modelName });
-            
-            // Jednoduchý test bez historie a složitostí, jen aby to prošlo
-            const prompt = `Jsi vypravěč RPG hry. Hráč udělal: "${akce_hrace}". Odpověz krátce česky a na konec dej validní JSON: { "popis": "text", "herni_data": {}, "možnosti": [] }`;
-            
-            const result = await model.generateContent(prompt);
-            responseText = result.response.text();
-            
-            usedModel = modelName;
-            console.log(`✅ ÚSPĚCH! Model ${modelName} funguje!`);
-            break; // Vyskočíme ze smyčky, máme vítěze
-        } catch (error) {
-            console.error(`❌ Model ${modelName} selhal (Chyba 404/400). Jdu na další.`);
-        }
-    }
-
-    if (!responseText) {
-        console.error("💀 VŠECHNY MODELY SELHALY.");
-        return res.status(500).json({ error: "FATÁLNÍ CHYBA: Tvůj API klíč nemá přístup k žádnému modelu. Zkontroluj Google Cloud Console." });
-    }
-
-    // Zpracování odpovědi (pokud nějaká prošla)
-    let json_odpoved;
     try {
-        const start = responseText.indexOf('{');
-        const end = responseText.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-            json_odpoved = JSON.parse(responseText.substring(start, end + 1));
-        } else {
-            json_odpoved = { popis: responseText, herni_data: {}, možnosti: ["Pokračovat"] };
+        if (chatHistory.length === 0) {
+            chatHistory = [
+                { role: "user", parts: [{ text: SYSTEM_INSTRUCTIONS }] },
+                { role: "model", parts: [{ text: "Rozumím." }] }
+            ];
         }
-    } catch (e) {
-        json_odpoved = { popis: responseText, herni_data: {}, možnosti: ["Pokračovat"] };
-    }
 
-    // Přidáme info o modelu pro debug
-    json_odpoved.debug_info = `Vygenerováno modelem: ${usedModel}`;
-    
-    res.json(json_odpoved);
+        const userMessage = `Stav: ${JSON.stringify(stav_hrace)}. Akce: "${akce_hrace}".`;
+        
+        const chat = model.startChat({ history: chatHistory });
+        const result = await chat.sendMessage(userMessage);
+        const text = result.response.text();
+
+        // Parsování JSONu
+        let json_odpoved;
+        try {
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                json_odpoved = JSON.parse(text.substring(start, end + 1));
+            } else {
+                json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
+            }
+        } catch (e) {
+            json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
+        }
+
+        res.json(json_odpoved);
+
+    } catch (error) {
+        console.error("CHYBA:", error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.listen(port, () => {
