@@ -1,7 +1,6 @@
 {
   "name": "ai-rpg-backend",
   "version": "1.0.0",
-  "description": "Backend pro AI text RPG",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
