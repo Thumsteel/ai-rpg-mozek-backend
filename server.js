@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI, SchemaType } from '@google/genai'; // Přidali jsme SchemaType
+import { GoogleGenAI } from '@google/genai'; // <--- TADY JE ZMĚNA (smazal jsem SchemaType)
 import cors from 'cors';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Inicializace Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.use(express.json());
@@ -40,17 +41,16 @@ app.post('/api/tah', async (req, res) => {
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', // Ujistíme se, že používáme stabilní model
+            model: 'gemini-1.5-flash',
             contents: history,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: "OBJECT",
+                    type: "OBJECT", // Používáme text místo SchemaType.OBJECT
                     properties: {
                         popis: { type: "STRING" },
                         herni_data: { 
                             type: "OBJECT",
-                            // TADY BYLA CHYBA - Musíme definovat vnitřek objektu:
                             properties: {
                                 zmena_zdravi: { type: "INTEGER" },
                                 nova_polozka: { type: "STRING" },
@@ -66,14 +66,13 @@ app.post('/api/tah', async (req, res) => {
             }
         });
 
-        const ai_text = response.text().trim(); // Oprava: response.text() je funkce
+        const ai_text = response.text().trim();
         let json_odpoved;
 
         try {
             json_odpoved = JSON.parse(ai_text);
         } catch (e) {
             console.error("Gemini vrátil nevalidní JSON:", ai_text);
-            // Pokud selže JSON, vrátíme alespoň text v náhradním objektu
             json_odpoved = { 
                 popis: ai_text, 
                 herni_data: {}, 
