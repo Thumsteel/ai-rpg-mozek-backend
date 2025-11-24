@@ -6,83 +6,77 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Inicializace
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const SYSTEM_INSTRUCTIONS = `
-Jsi Pán jeskyně pro temnou fantasy textovou RPG hru.
-Tvým úkolem je popisovat situace, reagovat na příkazy hráče a udržovat herní logiku.
-PRAVIDLA:
-1. Vždy odpovídej výhradně v češtině.
-2. Vždy popiš scénu stručně, ale atmosféricky.
-3. Nikdy nepřebírej kontrolu nad hráčovou postavou.
-4. Generuj validní JSON s touto strukturou:
-{
-  "popis": "Text popisu",
-  "herni_data": { "zmena_zdravi": 0, "nova_polozka": "", "info": "" },
-  "možnosti": ["Možnost 1", "Možnost 2"]
-}
-`;
-
-// Definice modelu - používáme pevnou verzi 002, která je stabilní
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-002",
-    systemInstruction: SYSTEM_INSTRUCTIONS, // Správné umístění instrukcí
-    generationConfig: {
-        responseMimeType: "application/json" 
-    }
-});
+// Používáme základní model gemini-pro (verze 1.0)
+// Ten je nejméně náchylný k chybám s oprávněním.
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
 app.use(express.json());
 app.use(cors());
 
-// Paměť pro historii chatu
 let chatHistory = [];
+
+const SYSTEM_INSTRUCTIONS = `
+Jsi Pán jeskyně pro temnou fantasy textovou RPG hru.
+Hrajeme hru. Odpovídej česky.
+Na konci každé odpovědi dej JSON v tomto formátu (nic jiného):
+{
+  "popis": "Tvůj popis situace",
+  "herni_data": { "zmena_zdravi": 0, "nova_polozka": "" },
+  "možnosti": ["Možnost A", "Možnost B"]
+}
+`;
 
 app.post('/api/tah', async (req, res) => {
     const { akce_hrace, stav_hrace } = req.body;
 
     try {
-        // Pokud je historie prázdná, inicializujeme ji
+        // Inicializace chatu při prvním tahu
         if (chatHistory.length === 0) {
-            // Zde už nemusíme posílat systémové instrukce, jsou v modelu
             chatHistory = [
                 {
                     role: "user",
-                    parts: [{ text: "Hra začíná. Čekám na úvod." }],
+                    parts: [{ text: SYSTEM_INSTRUCTIONS }]
                 },
                 {
                     role: "model",
-                    parts: [{ text: "Jsem připraven." }],
-                },
+                    parts: [{ text: "Rozumím. Jsem připraven vést hru a generovat JSON." }]
+                }
             ];
         }
 
-        // Připravíme zprávu
-        const userMessage = `Aktuální stav: ${JSON.stringify(stav_hrace)}. Moje akce: "${akce_hrace}"`;
-        
-        // Spustíme chat
+        const userMessage = `Stav hráče: ${JSON.stringify(stav_hrace)}. Akce hráče: "${akce_hrace}". (Nezapomeň na JSON)`;
+
         const chat = model.startChat({
-            history: chatHistory
+            history: chatHistory,
         });
 
-        // Odešleme zprávu
         const result = await chat.sendMessage(userMessage);
         const response = result.response;
         const text = response.text();
 
-        // Uložíme do historie
+        // Uložení historie
         chatHistory.push({ role: "user", parts: [{ text: userMessage }] });
         chatHistory.push({ role: "model", parts: [{ text: text }] });
 
-        // Zpracování JSONu
+        // Extrakce JSONu z odpovědi (gemini-pro někdy kecá okolo, musíme najít jen JSON)
         let json_odpoved;
         try {
-            json_odpoved = JSON.parse(text);
+            // Najdeme první '{' a poslední '}'
+            const jsonStartIndex = text.indexOf('{');
+            const jsonEndIndex = text.lastIndexOf('}');
+            
+            if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+                const jsonString = text.substring(jsonStartIndex, jsonEndIndex + 1);
+                json_odpoved = JSON.parse(jsonString);
+            } else {
+                throw new Error("JSON nenalezen");
+            }
         } catch (e) {
-            console.error("Chyba parsování JSON:", text);
+            console.error("Chyba parsování:", text);
             json_odpoved = {
-                popis: text, // Pokud AI nepošle JSON, zobrazíme alespoň text
+                popis: text, // Prostě vrátíme celý text, když se JSON nepovede
                 herni_data: {},
                 možnosti: ["Pokračovat"]
             };
@@ -92,7 +86,6 @@ app.post('/api/tah', async (req, res) => {
 
     } catch (error) {
         console.error("CHYBA API:", error);
-        // Detailní výpis pro snazší opravu
         res.status(500).json({ error: "Chyba serveru: " + error.message });
     }
 });
