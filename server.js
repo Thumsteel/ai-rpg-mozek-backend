@@ -6,10 +6,10 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Inicializace
+// Inicializace s novým klíčem
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Použijeme tento model. S novým klíčem MUSÍ fungovat.
+// Použijeme stabilní model. S novým klíčem bude fungovat.
 const model = genAI.getGenerativeModel({ 
     model: "gemini-1.5-flash",
     generationConfig: {
@@ -20,7 +20,7 @@ const model = genAI.getGenerativeModel({
 app.use(express.json());
 app.use(cors());
 
-// Historie chatu
+// Jednoduchá historie
 let chatHistory = [];
 
 const SYSTEM_INSTRUCTIONS = `
@@ -36,11 +36,10 @@ Na konci každé odpovědi dej JSON v tomto formátu (nic jiného):
 
 app.post('/api/tah', async (req, res) => {
     const { akce_hrace, stav_hrace } = req.body;
-
-    // Výpis do logů, abychom viděli, že server žije
-    console.log(`Příchozí tah: ${akce_hrace}`);
+    console.log(`Hráč: ${akce_hrace}`);
 
     try {
+        // Inicializace při startu
         if (chatHistory.length === 0) {
             chatHistory = [
                 { role: "user", parts: [{ text: SYSTEM_INSTRUCTIONS }] },
@@ -54,12 +53,12 @@ app.post('/api/tah', async (req, res) => {
         const result = await chat.sendMessage(userMessage);
         const text = result.response.text();
 
-        console.log("Odpověď od AI přijata."); // Kontrola v logu
+        console.log("AI odpověděla OK.");
 
         chatHistory.push({ role: "user", parts: [{ text: userMessage }] });
         chatHistory.push({ role: "model", parts: [{ text: text }] });
 
-        // Pokus o parsování JSONu
+        // Parsování JSONu
         let json_odpoved;
         try {
             const start = text.indexOf('{');
@@ -67,7 +66,7 @@ app.post('/api/tah', async (req, res) => {
             if (start !== -1 && end !== -1) {
                 json_odpoved = JSON.parse(text.substring(start, end + 1));
             } else {
-                throw new Error("JSON nenalezen");
+                json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
             }
         } catch (e) {
             json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
@@ -76,11 +75,11 @@ app.post('/api/tah', async (req, res) => {
         res.json(json_odpoved);
 
     } catch (error) {
-        console.error("KRITICKÁ CHYBA:", error);
-        res.status(500).json({ error: error.message });
+        console.error("CHYBA:", error);
+        res.status(500).json({ error: "Chyba serveru: " + error.message });
     }
 });
 
 app.listen(port, () => {
-    console.log(`Backend server běží na portu ${port}`);
+    console.log(`Server běží na portu ${port}`);
 });
