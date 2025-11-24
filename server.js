@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-// Nepoužíváme google knihovnu, použijeme vestavěný 'fetch'
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,54 +12,39 @@ app.use(express.json());
 app.use(cors());
 
 app.post('/api/tah', async (req, res) => {
-    const { akce_hrace, stav_hrace } = req.body;
-    console.log(`Hráč: ${akce_hrace}`);
+    console.log("🕵️‍♂️ Spouštím detektiva...");
 
-    // Adresa přímo na Google API (obcházíme knihovnu)
-    // Zkusíme model gemini-1.5-flash
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
-
-    const dataToSend = {
-        contents: [{
-            parts: [{
-                text: `Jsi Pán jeskyně RPG hry. Stav: ${JSON.stringify(stav_hrace)}. Akce: ${akce_hrace}. Odpověz česky a na konci dej validní JSON: { "popis": "text", "herni_data": {}, "možnosti": [] }`
-            }]
-        }]
-    };
+    // Místo generování textu se zeptáme na seznam modelů
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
 
     try {
-        console.log("Odesílám požadavek přímo na Google URL...");
-        
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(dataToSend)
-        });
-
-        // Přečteme odpověď
+        const response = await fetch(url);
         const data = await response.json();
 
-        // Pokud Google vrátí chybu, vypíšeme ji celou
-        if (!response.ok) {
-            console.error("❌ CHYBA OD GOOGLE:", JSON.stringify(data, null, 2));
-            return res.status(response.status).json({ error: data.error.message });
+        console.log("------------------------------------------------");
+        console.log("📡 ODPOVĚĎ GOOGLU (SEZNAM MODELŮ):");
+        
+        if (data.error) {
+            console.error("❌ KRITICKÁ CHYBA ÚČTU:", JSON.stringify(data, null, 2));
+            return res.json({ popis: "CHYBA ÚČTU: " + data.error.message });
         }
 
-        // Zpracování úspěšné odpovědi
-        const text = data.candidates[0].content.parts[0].text;
-        console.log("✅ Google odpověděl!");
+        if (!data.models) {
+            console.error("❌ ŽÁDNÉ MODELY! Tvůj účet nemá přístup k AI.");
+            return res.json({ popis: "Tvůj účet je prázdný. Žádné modely." });
+        }
 
-        // Jednoduché parsování JSONu
-        let json_odpoved = { popis: text, herni_data: {}, možnosti: ["Pokračovat"] };
-        try {
-            const s = text.indexOf('{');
-            const e = text.lastIndexOf('}');
-            if (s !== -1) json_odpoved = JSON.parse(text.substring(s, e + 1));
-        } catch (e) {}
+        // Vypíšeme všechny modely, které tento klíč vidí
+        const nazvyModelu = data.models.map(m => m.name);
+        console.log("✅ DOSTUPNÉ MODELY:", JSON.stringify(nazvyModelu, null, 2));
+        console.log("------------------------------------------------");
 
-        res.json(json_odpoved);
+        // Pošleme to do hry jako text, abys to viděl i na Vercelu
+        res.json({
+            popis: "DETEKTIV DOKONČEN. Podívej se do Logů na Renderu, co tento klíč vidí.",
+            herni_data: {},
+            možnosti: ["Zkontrolovat logy"]
+        });
 
     } catch (error) {
         console.error("❌ CHYBA SÍTĚ:", error);
@@ -69,5 +53,5 @@ app.post('/api/tah', async (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`Server běží na portu ${port}`);
+    console.log(`Detektivní server běží na portu ${port}`);
 });
