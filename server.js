@@ -6,13 +6,16 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// !!! SEM VLOŽ TEN KLÍČ Z NOVÉHO GMAILU !!!
-const API_KEY = "AIzaSyC3x7t9yKJlHvGBOfSVqVQHQR9cUGTfAq8"; 
+// 1. Tady si kód "sáhne" do Renderu pro ten nový klíč
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-
-// Použijeme nejrychlejší model. S novým účtem musí fungovat.
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// 2. Použijeme stabilní model (s novým účtem už pojede)
+const model = genAI.getGenerativeModel({ 
+    model: "gemini-1.5-flash",
+    generationConfig: {
+        responseMimeType: "application/json" 
+    }
+});
 
 app.use(express.json());
 app.use(cors());
